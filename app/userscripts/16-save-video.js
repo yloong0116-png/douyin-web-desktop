@@ -1,7 +1,7 @@
 /* 保存当前作品 v3.1：内容选择面板 + 默认选项设置（齿轮）+ 六项资源 */
 (function () {
   'use strict';
-  var VERSION = '3.2';
+  var VERSION = '3.3';
   var btn = null, panel = null, settings = null, snap = null;
 
   var DEFAULTS = { media: true, music: false, cover: false, music_cover: false, avatar: false, text: false };
@@ -29,7 +29,15 @@
     return d ? d.textContent.trim() : '';
   }
 
-  var lastClick = null;   // 最近一次点击到的作品卡片 { id, ts }
+  /* ---- 作品上下文（v3.3）----
+   * 规则：
+   *  1) 候选必须属于当前路由：lastClick 带 pathname，切路由即失效。
+   *  2) 播放器宿主 ID 优先取 <a href="/video/…">（渲染态），其次属性（可能被 React 复用后滞留）。
+   *  3) 无 URL 作品标识、无作品浮层时，只接受"正在播放"的可见播放器 —— 隐藏/暂停的残留不算。
+   *  4) 多源冲突又无权威来源 → 拒绝，绝不回退到旧上下文。
+   */
+  var lastClick = null;     // { id, ts, path }
+  var lastPath = location.pathname;
 
   function idLike(s) { return /^\d{8,}$/.test(String(s || '')); }
 
@@ -51,11 +59,11 @@
     return out;
   }
 
+  /* 宿主：href 优先（渲染态更可信），attr 次之；两者不一致时用 href 并记录 */
   function hostOf(v) {
-    var n = v, byHref = null;
+    var n = v, byHref = null, byAttr = null;
     for (var i = 0; i < 14 && n; i++) {
-      var id = attrsOf(n);
-      if (id) return { id: id, el: n };
+      if (!byAttr) { var a = attrsOf(n); if (a) byAttr = { id: a, el: n }; }
       if (!byHref && n.getAttribute) {
         var h = n.getAttribute('href');
         if (h) {
@@ -65,7 +73,16 @@
       }
       n = n.parentElement;
     }
-    return byHref;
+    if (byHref) return { id: byHref.id, el: byHref.el, via: 'href', attrDisagree: (byAttr && byAttr.id !== byHref.id) ? byAttr.id : '' };
+    return byAttr ? { id: byAttr.id, el: byAttr.el, via: 'attr', attrDisagree: '' } : null;
+  }
+
+  function onScreen(v) {
+    var r = v.getBoundingClientRect();
+    if (r.width < 40 || r.height < 40) return false;
+    var w = Math.max(0, Math.min(r.right, window.innerWidth) - Math.max(r.left, 0));
+    var h = Math.max(0, Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0));
+    return (w * h) >= (r.width * r.height) * 0.3;
   }
 
   /* 只有"内部真的含播放器"的可见浮层才算作品浮层；登录弹窗等一律忽略 */
@@ -81,37 +98,60 @@
     return null;
   }
 
-  /* 统一作品识别：URL(modal/path) > 推荐流活动项 > 浮层播放器 > video 宿主 > 最近点击
-     多源冲突且无 URL 明确指向时拒绝，不猜。 */
   function resolveCurrent() {
-    var out = { videos: document.querySelectorAll('video').length, candidates: [], chosen: null, conflict: false, note: '' };
+    var out = { videos: document.querySelectorAll('video').length, candidates: [], chosen: null,
+                conflict: false, note: '', page: location.pathname };
+
+    if (location.pathname !== lastPath) {      // SPA 切路由：旧点击上下文立即作废
+      lastPath = location.pathname;
+      lastClick = null;
+    }
+
     urlIds().forEach(function (c) { out.candidates.push({ id: c.id, via: c.via }); });
+    var hasUrl = out.candidates.length > 0;
 
     var act = document.querySelector('[data-e2e="feed-active-video"][data-e2e-vid]');
-    if (act) out.candidates.push({ id: act.getAttribute('data-e2e-vid'), via: 'feed-active-video' });
+    if (act) {
+      var ar = act.getBoundingClientRect();
+      if (ar.width > 0 && ar.height > 0) out.candidates.push({ id: act.getAttribute('data-e2e-vid'), via: 'feed-active-video' });
+      else out.note = 'active-hidden';
+    }
 
     var scope = dialogScope();
-    var best = null;
+    var best = null, skipped = 0;
     [].slice.call((scope || document).querySelectorAll('video')).forEach(function (v) {
-      var a = area(v);
-      if (a <= 0) return;
+      if (!onScreen(v)) { skipped++; return; }
       var h = hostOf(v);
-      if (!h) return;
+      if (!h) { skipped++; return; }
       var playing = !v.paused && !v.ended && v.currentTime > 0;
+      /* 无 URL 标识、无浮层时：播放中的才算"当前作品"，否则视为残留播放器 */
+      if (!hasUrl && !scope && !playing) { skipped++; return; }
+      var a = area(v);
       var score = a + (playing ? 5e5 : 0);
-      if (!best || score > best.score) best = { id: h.id, via: (scope ? 'dialog-video' : 'video-el'), score: score, el: v };
+      if (!best || score > best.score) {
+        best = { id: h.id, via: (scope ? 'dialog-video' : (h.via === 'href' ? 'video-href' : 'video-attr')),
+                 score: score, el: v, playing: playing, attrDisagree: h.attrDisagree };
+      }
     });
-    if (best) out.candidates.push({ id: best.id, via: best.via });
+    if (best) {
+      out.candidates.push({ id: best.id, via: best.via });
+      out.play = best.playing;
+      if (best.attrDisagree) out.note = (out.note ? out.note + ';' : '') + 'attr-stale:' + best.attrDisagree;
+    }
     out.bestEl = best ? best.el : null;
     out.scope = scope;
+    out.skipped = skipped;
 
-    if (lastClick && Date.now() - lastClick.ts < 30000) out.candidates.push({ id: lastClick.id, via: 'recent-click' });
+    if (lastClick && lastClick.path === location.pathname && Date.now() - lastClick.ts < 30000) {
+      out.candidates.push({ id: lastClick.id, via: 'recent-click' });
+    }
 
     var ids = [];
     out.candidates.forEach(function (c) { if (c.id && ids.indexOf(c.id) < 0) ids.push(c.id); });
     out.ids = ids;
 
-    var PRI = { 'url:path': 100, 'url:modal_id': 96, 'url:vid': 94, 'dialog-video': 92, 'feed-active-video': 85, 'video-el': 60, 'recent-click': 30 };
+    var PRI = { 'url:path': 100, 'url:modal_id': 96, 'url:vid': 94, 'dialog-video': 92,
+                'feed-active-video': 85, 'video-href': 70, 'video-attr': 65, 'recent-click': 30 };
     var ranked = out.candidates.filter(function (c) { return c.id; }).sort(function (a, b) {
       return (PRI[b.via] || 0) - (PRI[a.via] || 0);
     });
@@ -120,13 +160,14 @@
       out.chosen = { id: ids[0], via: (ranked[0] && ranked[0].via) || 'single' };
     } else if (ids.length > 1) {
       var top = ranked[0];
-      var authoritative = top && (top.via.indexOf('url:') === 0 || top.via === 'dialog-video' || top.via === 'feed-active-video');
+      var authoritative = top && (top.via.indexOf('url:') === 0 || top.via === 'dialog-video');
       if (authoritative) {
         out.chosen = { id: top.id, via: top.via };
-        out.note = 'dom-disagrees:' + ids.filter(function (x) { return x !== top.id; }).join(',');
+        out.note = (out.note ? out.note + ';' : '') + 'dom-disagrees:' + ids.filter(function (x) { return x !== top.id; }).join(',');
       } else {
+        /* 无权威来源 + 候选互相矛盾（典型：跨页面残留 vs 当前播放）→ 拒绝，不猜 */
         out.conflict = true;
-        out.note = 'multi:' + ids.join(',');
+        out.note = (out.note ? out.note + ';' : '') + 'multi:' + ids.join(',');
       }
     }
     return out;
@@ -136,11 +177,11 @@
     var n = e.target;
     for (var i = 0; i < 14 && n; i++) {
       var id = attrsOf(n);
-      if (id) { lastClick = { id: id, ts: Date.now() }; return; }
+      if (id) { lastClick = { id: id, ts: Date.now(), path: location.pathname }; return; }
       var href = n.getAttribute && n.getAttribute('href');
       if (href) {
         var m = String(href).match(/\/video\/(\d{8,})/) || String(href).match(/[?&]modal_id=(\d{8,})/);
-        if (m) { lastClick = { id: m[1], ts: Date.now() }; return; }
+        if (m) { lastClick = { id: m[1], ts: Date.now(), path: location.pathname }; return; }
       }
       n = n.parentElement;
     }
@@ -336,7 +377,7 @@
 
   function openPanel() {
     var r = resolveCurrent();
-    var log = '[DouyinSave] resolve videos=' + r.videos + ' ids=' + JSON.stringify(r.ids) + ' conflict=' + r.conflict + (r.note ? ' note=' + r.note : '') + ' scope=' + (r.scope ? 'dialog' : (r.bestEl ? 'player' : 'none'));
+    var log = '[DouyinSave] resolve page=' + r.page + ' videos=' + r.videos + ' ids=' + JSON.stringify(r.ids) + ' conflict=' + r.conflict + (r.note ? ' note=' + r.note : '') + ' scope=' + (r.scope ? 'dialog' : (r.bestEl ? 'player' : 'none')) + ' play=' + r.play + ' skipped=' + r.skipped;
     if (!r.chosen) {
       console.log(log + ' -> refused (cannot determine current aweme)');
       toast('无法确定当前作品（本页未检测到作品标识）');
