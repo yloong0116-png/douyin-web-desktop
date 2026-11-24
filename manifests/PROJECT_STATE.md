@@ -25,7 +25,7 @@ flowchart LR
 | 项 | 值 |
 |---|---|
 | 版本 | 1.0.0（2026-11-25） |
-| Git | 无仓库 |
+| Git | https://github.com/yloong0116-png/douyin-web-desktop （branch: main） |
 | launcher.js | `c1160d8fd56d0b9598c000cf38844124d82aae75e0eb9a3b6a599df260f1b080`（**交付副本**因路径可配置化而不同，见 FILES_SHA256） |
 | nav.js | `374c8bb8329b92e0ebd4eb7371f374979cd067e2b1b538669a5d1893886ed605`（原版） |
 | 12-douyinplus | `99afa17b91a94887e5ee399d0e2ce5548963c9836beade2246220503c4d66415`（未打包，仅记录） |
