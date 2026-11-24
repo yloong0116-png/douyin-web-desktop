@@ -1,0 +1,4 @@
+f0c7daca662a6c1aad22a57acab71ccc02129212a93557ec12ba17baa5e085f3  Douyin-Web-Desktop-Handoff.zip
+size: 232114 bytes
+generated: 2026-11-25 00:52:19
+version: 1.0.0
