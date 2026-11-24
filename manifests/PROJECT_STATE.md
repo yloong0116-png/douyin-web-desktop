@@ -66,3 +66,10 @@ flowchart LR
 1. `README.md` → 2. `docs/ARCHITECTURE.md` → 3. `docs/FEATURES.md` → 4. `docs/KNOWN_ISSUES.md` → 5. 本文件
 
 **先读现状，再动手。**
+
+## 8. 2026-11-25 更新
+
+- `16-save-video.js` → v3.2：统一作品识别（URL modal_id / href 兜底 / 浮层作用域 / 优先级裁决 / 冲突拒绝）。
+- 已实测：详情页、他人主页浮层、自己主页浮层、搜索页浮层 4 类锁定正确；无作品页正确拒绝。
+- 未验证：推荐页、关注页、朋友页（测试实例不渲染作品标识）。
+- 回滚：`userscripts/16-save-video.v3.1-20261124.bak`（sha `8bbc20f4…`）。
