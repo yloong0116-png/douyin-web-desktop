@@ -30,7 +30,7 @@ Expand-Archive -Path ".\Douyin-Web-Desktop-Handoff.zip" -DestinationPath $dst -F
 cd $dst
 ```
 
-解压后应看到 `launcher.js`、`nav.js`、`userscripts\`、`package.json`。
+解压后应看到 `app\`、`docs\`、`manifests\`、`package.json`；启动器在 `app\launcher\launcher.js`。
 
 ## 4. 安装依赖
 
@@ -52,7 +52,7 @@ npx playwright install chromium
 复制示例配置：
 
 ```powershell
-Copy-Item .\download-preferences.example.json .\download-preferences.json
+Copy-Item .\app\config\download-preferences.example.json .\download-preferences.json
 ```
 
 键说明见 [CONFIGURATION.md](CONFIGURATION.md)。
@@ -69,7 +69,7 @@ setx DY_SAVE_DIR "E:\Douyin"
 
 ```powershell
 cd "$env:LOCALAPPDATA\DouyinApp"
-node launcher.js
+node app\launcher\launcher.js     # 等价于 npm start
 ```
 
 预期：弹出无地址栏的抖音窗口，`launcher.log` 出现 `init: nav + early[...] late[...]`。
@@ -112,3 +112,34 @@ Remove-Item "$env:USERPROFILE\Desktop\抖音.lnk" -Force
 ## 12. 常见问题
 
 见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)。
+
+
+---
+
+## 附：从 GitHub 直接安装（不用 ZIP）
+
+```powershell
+git clone https://github.com/yloong0116-png/douyin-web-desktop.git "$env:LOCALAPPDATA\DouyinApp"
+cd "$env:LOCALAPPDATA\DouyinApp"
+npm install
+npm start
+```
+
+## 附：机器上没有 Chrome
+
+启动器固定用系统 Chrome（`channel: 'chrome'`）。任选一种：
+
+1. 装 Chrome（推荐）：`winget install Google.Chrome`
+2. 改用 Playwright 自带 Chromium：把 `app/launcher/launcher.js` 里的 `channel: 'chrome'` 改成 `channel: 'chromium'`，再执行 `npx playwright install chromium`。
+
+## 附：验证安装成功
+
+启动后项目根目录会出现 `launcher.log`，里面应有三行：
+
+```
+init: nav + early[...] late[...]
+[DouyinSave] v3.1 button mounted prefs={...}
+[DouyinSave] nativenav ready containers=1 hidden=4
+```
+
+看到这三行 = 启动器、脚本注入、下载面板、导航隐藏全部正常。
