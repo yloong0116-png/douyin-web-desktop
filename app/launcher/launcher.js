@@ -7,18 +7,7 @@ const PROFILE = process.env.DY_PROFILE || path.join(ROOT, 'profile');
 const NAV = path.join(__dirname, 'nav.js');
 const SCRIPTS = path.join(ROOT, 'app', 'userscripts');
 const LOG = process.env.DY_LOG || path.join(ROOT, 'launcher.log');
-function resolveDownloadDir() {
-  try {
-    var out = require('child_process').execFileSync('reg', ['query',
-      'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders',
-      '/v', '{374DE290-123F-4565-9164-39C4925E467B}'],
-      { encoding: 'utf8', windowsHide: true });
-    var m = out.match(/REG_(?:EXPAND_)?SZ\s+(.+)$/m);
-    if (m) return m[1].trim().replace(/%USERPROFILE%/gi, process.env.USERPROFILE || '');
-  } catch (e) {}
-  return path.join(os.homedir(), 'Downloads');
-}
-const SAVE_DIR = process.env.DY_SAVE_DIR || resolveDownloadDir();
+const SAVE_DIR = process.env.DY_SAVE_DIR || 'D:\\Media\\Douyin';
 const PARSE_API = 'https://parse.rcuts.com:8443/v1/parse';
 const WEB = 'https://www.douyin.com/?recommend=1';
 const UA_IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 aweme_8.3.1 JsSdk/2.0 NetType/WIFI Channel/App Store ByteLocale/zh Region/CN';

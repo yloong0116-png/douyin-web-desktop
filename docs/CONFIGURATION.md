@@ -23,7 +23,7 @@
 
 | 变量 | 作用 | 默认 |
 |---|---|---|
-| `DY_SAVE_DIR` | 下载保存目录 | 系统下载目录（读注册表，失败回退 `%USERPROFILE%\Downloads`） |
+| `DY_SAVE_DIR` | 下载保存目录 | `D:\Media\Douyin` |
 | `DY_LOG` | 日志文件路径 | `<项目>\launcher.log` |
 | `DY_PLAYWRIGHT` | playwright 模块路径 | 直接 `require('playwright')` |
 | `DY_PROXY` | 传给 Chromium 的代理，如 `http://127.0.0.1:7897` | 不设置 |
