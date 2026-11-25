@@ -7,7 +7,11 @@ const PROFILE = process.env.DY_PROFILE || path.join(ROOT, 'profile');
 const NAV = path.join(__dirname, 'nav.js');
 const SCRIPTS = path.join(ROOT, 'app', 'userscripts');
 const LOG = process.env.DY_LOG || path.join(ROOT, 'launcher.log');
-const SAVE_DIR = process.env.DY_SAVE_DIR || 'D:\\Media\\Douyin';
+const DEFAULT_SAVE_DIR = 'D:\\Media\\Douyin';
+function resolveSaveDir() {
+  try { const p = readPrefs(); if (p && p.saveDir) return p.saveDir; } catch (e) {}
+  return process.env.DY_SAVE_DIR || DEFAULT_SAVE_DIR;
+}
 const PARSE_API = 'https://parse.rcuts.com:8443/v1/parse';
 const WEB = 'https://www.douyin.com/?recommend=1';
 const UA_IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 aweme_8.3.1 JsSdk/2.0 NetType/WIFI Channel/App Store ByteLocale/zh Region/CN';
@@ -22,6 +26,7 @@ const PREF_DEFAULTS = { media: true, music: false, cover: false, music_cover: fa
 function normalizePrefs(j) {
   const out = {};
   for (const k of PREF_KEYS) out[k] = (j && typeof j[k] === 'boolean') ? j[k] : PREF_DEFAULTS[k];
+  if (j && typeof j.saveDir === 'string' && j.saveDir.trim()) out.saveDir = j.saveDir.trim();
   return out;
 }
 function readPrefs() {
@@ -79,6 +84,7 @@ function runAtOf(file) {
   const prefs = readPrefs();
   log('prefs: loaded ' + JSON.stringify(prefs));
   await ctx.addInitScript({ content: 'window.__DY_PREFS = ' + JSON.stringify(prefs) + ';' });
+  await ctx.addInitScript({ content: 'window.__DVD_SAVE_DIR = ' + JSON.stringify(resolveSaveDir()) + ';' });
 
   const scripts = scriptList();
   const early = [], late = [];
@@ -179,7 +185,8 @@ function runAtOf(file) {
       const title = String(d.title || d.desc || snap.title || 'douyin').trim();
       const base = sanitize(title) || 'douyin';
       const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
-      fs.mkdirSync(SAVE_DIR, { recursive: true });
+      const dir = resolveSaveDir();
+      fs.mkdirSync(dir, { recursive: true });
 
       const files = [];
       const type = String(d.type || '').toLowerCase();
@@ -228,14 +235,14 @@ function runAtOf(file) {
       let stem = base + '_' + stamp;
       for (let k = 0; k < 100; k++) {
         const cand = k === 0 ? stem : stem + '_' + k;
-        const probe = path.join(SAVE_DIR, cand + (type !== 'video' && imgs.length ? '_01.jpg' : '.mp4'));
+        const probe = path.join(dir, cand + (type !== 'video' && imgs.length ? '_01.jpg' : '.mp4'));
         if (!fs.existsSync(probe)) { stem = cand; break; }
       }
 
       for (const item of job) {
         const name = stem + (item.seq ? '_' + String(item.seq).padStart(2, '0') : '') + (item.tag || '') + item.ext;
         try {
-          const n = await download(item.url, path.join(SAVE_DIR, name), 'https://www.douyin.com/');
+          const n = await download(item.url, path.join(dir, name), 'https://www.douyin.com/');
           files.push(name + ' (' + n + 'B)');
           log(T + ' ok ' + item.k + ' -> ' + name);
         } catch (e) {
@@ -245,7 +252,7 @@ function runAtOf(file) {
 
       if (sel.indexOf('text') >= 0 && title) {
         try {
-          fs.writeFileSync(path.join(SAVE_DIR, stem + '.txt'), title + '\n', 'utf8');
+          fs.writeFileSync(path.join(dir, stem + '.txt'), title + '\n', 'utf8');
           files.push(stem + '.txt');
           log(T + ' ok text -> ' + stem + '.txt');
         } catch (e) { log(T + ' fail text ' + e.message); }
@@ -277,6 +284,48 @@ function runAtOf(file) {
   watch(main);
 
   const clean = () => { stack = stack.filter(p => { try { return !p.isClosed(); } catch (e) { return false; } }); if (!stack.length) stack = [main]; };
+
+  // 选择保存目录（Windows 原生文件夹对话框）
+  await ctx.exposeBinding('__dyPickDir', async () => {
+    const { execFile } = require('child_process');
+    const cur = resolveSaveDir().replace(/'/g, "''");
+    const ps = [
+      'Add-Type -AssemblyName System.Windows.Forms',
+      '$f = New-Object System.Windows.Forms.FolderBrowserDialog',
+      "$f.Description = '选择抖音下载保存位置'",
+      "$f.SelectedPath = '" + cur + "'",
+      '$f.ShowNewFolderButton = $true',
+      'if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }'
+    ].join('\n');
+    return await new Promise((resolve) => {
+      execFile('powershell', ['-NoProfile', '-STA', '-Command', ps], { windowsHide: true, timeout: 120000 }, (err, stdout) => {
+        const p = String(stdout || '').trim();
+        log('[dir] pick -> ' + (p || '(cancelled)'));
+        resolve(p || null);
+      });
+    });
+  });
+
+  // 校验可写并持久化
+  await ctx.exposeBinding('__dySetDir', async (source, dirInput) => {
+    const p = String(dirInput || '').trim();
+    if (!p) return { ok: false, err: 'empty' };
+    try {
+      fs.mkdirSync(p, { recursive: true });
+      fs.accessSync(p, fs.constants.W_OK);
+      const probe = path.join(p, '.dy-write-test-' + Date.now());
+      fs.writeFileSync(probe, 'ok');
+      fs.unlinkSync(probe);
+    } catch (e) {
+      log('[dir] invalid ' + p + ' ' + (e.code || e.message));
+      return { ok: false, err: e.code || e.message };
+    }
+    const next = readPrefs();
+    next.saveDir = p;
+    const ok = writePrefs(next);
+    log('[dir] saved ' + p + ' ok=' + ok);
+    return ok ? { ok: true, dir: p } : { ok: false, err: 'write prefs failed' };
+  });
 
   await ctx.exposeBinding('__dyBack', async (source) => {
     clean();

@@ -282,6 +282,30 @@
     hint.textContent = '修改后需点「保存默认选项」才会生效';
     settings.appendChild(hint);
 
+    // 保存位置
+    var dirWrap = document.createElement("div");
+    dirWrap.style.cssText = "margin-top:10px;padding:8px;background:rgba(255,255,255,.05);border-radius:6px";
+    var dirTitle = document.createElement("div");
+    dirTitle.style.cssText = "font-size:11px;opacity:.55;margin-bottom:4px";
+    dirTitle.textContent = "保存位置";
+    var dirPath = document.createElement("div");
+    dirPath.style.cssText = "font-size:11px;word-break:break-all;line-height:1.4;opacity:.9;margin-bottom:6px";
+    dirPath.textContent = window.__DVD_SAVE_DIR || "(默认)";
+    dirWrap.appendChild(dirTitle);
+    dirWrap.appendChild(dirPath);
+    mkBtn("更改文件夹", false, function () {
+      if (typeof window.__dyPickDir !== "function") { toast("当前宿主不支持更改目录"); return; }
+      toast("请在弹出的窗口中选择文件夹");
+      window.__dyPickDir().then(function (p) {
+        if (!p) { toast("已取消，未修改"); return; }
+        return window.__dySetDir(p).then(function (r) {
+          if (r && r.ok) { dirPath.textContent = r.dir; window.__DVD_SAVE_DIR = r.dir; toast("已保存到 " + r.dir); }
+          else { toast("无法使用该文件夹：" + ((r && r.err) || "未知错误")); }
+        });
+      }).catch(function (e) { toast("选择失败：" + e.message); });
+    }, dirWrap);
+    settings.appendChild(dirWrap);
+
     var r1 = document.createElement('div');
     r1.style.cssText = 'display:flex;gap:6px;margin-top:8px';
     mkBtn('保存默认选项', true, function () {
