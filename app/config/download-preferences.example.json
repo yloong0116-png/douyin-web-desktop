@@ -1,0 +1,8 @@
+{
+  "media": true,
+  "music": false,
+  "cover": false,
+  "music_cover": false,
+  "avatar": false,
+  "text": false
+}
