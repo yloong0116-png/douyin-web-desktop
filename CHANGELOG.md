@@ -66,3 +66,9 @@
 ### 文档
 - 新增 reports：轻量化审计、前后台资源设计、Node 死代码与 Renderer 诊断、Chromium Network 内存调查、内存增长调查。
 - 文档中的本机绝对路径已替换为通用占位。
+
+## 1.0.5 — 2026-11-25
+
+### 行为变更
+- 下载目录默认改为**系统下载目录**：读注册表 `{374DE290-123F-4565-9164-39C4925E467B}`（支持已重定向的 Downloads），失败回退 `%USERPROFILE%\Downloads`；不再写死 `D:\Media\Douyin`。仍可用 `DY_SAVE_DIR` 覆盖。
+- 与网站插件（userscript 走 `GM_download`）行为一致。
